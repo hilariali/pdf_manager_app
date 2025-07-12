@@ -2,14 +2,34 @@ import io
 import fitz  # PyMuPDF
 from PIL import Image
 import pytesseract
-import cv2
 import numpy as np
+
+# Try to import cv2, fall back to PIL-only processing if it fails
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    print("OpenCV not available, using PIL-only image processing")
 
 class OCRProcessor:
     def __init__(self):
-        # Configure Tesseract path if needed
-        # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        self.cv2_available = CV2_AVAILABLE
         pass
+    
+    def preprocess_image(self, image):
+        """Preprocess image for better OCR results"""
+        if self.cv2_available:
+            # Use OpenCV for advanced preprocessing
+            image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
+            denoised = cv2.fastNlMeansDenoising(gray)
+            return Image.fromarray(denoised)
+        else:
+            # Use PIL for basic preprocessing
+            if image.mode != 'L':
+                image = image.convert('L')  # Convert to grayscale
+            return image
     
     def extract_text(self, file):
         """Extract text from PDF or image using OCR"""
@@ -32,7 +52,8 @@ class OCRProcessor:
             
             # Perform OCR on image
             image = Image.open(io.BytesIO(img_data))
-            page_text = pytesseract.image_to_string(image, lang='eng')
+            preprocessed_image = self.preprocess_image(image)
+            page_text = pytesseract.image_to_string(preprocessed_image, lang='eng')
             extracted_text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
         
         # Create searchable PDF
@@ -51,14 +72,10 @@ class OCRProcessor:
         image = Image.open(image_file)
         
         # Preprocess image for better OCR
-        image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
-        
-        # Apply image enhancement
-        denoised = cv2.fastNlMeansDenoising(gray)
+        preprocessed_image = self.preprocess_image(image)
         
         # Perform OCR
-        extracted_text = pytesseract.image_to_string(denoised, lang='eng')
+        extracted_text = pytesseract.image_to_string(preprocessed_image, lang='eng')
         
         # Create PDF from image with text layer
         pdf_with_text = self.create_pdf_from_image(image, extracted_text)
@@ -73,8 +90,6 @@ class OCRProcessor:
     
     def create_searchable_pdf(self, original_doc, text):
         """Create a searchable PDF by adding text layer"""
-        # This is a simplified version - in practice, you'd need to
-        # position text accurately over the original content
         output = io.BytesIO()
         original_doc.save(output)
         output.seek(0)
