@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Enhanced CSS with drag-and-drop support
+# Enhanced CSS with preview support
 st.markdown("""
 <style>
 .main-header {
@@ -43,13 +43,15 @@ st.markdown("""
     cursor: crosshair;
 }
 
-.position-overlay {
-    position: absolute;
-    background: rgba(231, 76, 60, 0.7);
-    border: 2px solid #e74c3c;
-    border-radius: 3px;
-    pointer-events: none;
-    z-index: 10;
+.before-after-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.preview-section {
+    text-align: center;
 }
 
 .page-thumbnail {
@@ -69,69 +71,7 @@ st.markdown("""
     border-color: #e74c3c;
     background: rgba(231, 76, 60, 0.1);
 }
-
-.drag-drop-area {
-    border: 2px dashed #bdc3c7;
-    border-radius: 10px;
-    padding: 40px;
-    text-align: center;
-    background: #f8f9fa;
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.drag-drop-area:hover {
-    border-color: #3498db;
-    background: #e3f2fd;
-}
-
-.position-controls {
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    margin: 15px 0;
-}
-
-.before-after-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin: 20px 0;
-}
-
-.preview-section {
-    text-align: center;
-}
-
-.preview-section h4 {
-    margin-bottom: 10px;
-    color: #2c3e50;
-}
 </style>
-
-<script>
-function updatePosition(x, y) {
-    const overlay = document.querySelector('.position-overlay');
-    if (overlay) {
-        overlay.style.left = x + 'px';
-        overlay.style.top = y + 'px';
-    }
-}
-
-function handleImageClick(event) {
-    const rect = event.target.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    // Update position in Streamlit session state
-    window.parent.postMessage({
-        type: 'position_update',
-        x: Math.round(x),
-        y: Math.round(y)
-    }, '*');
-}
-</script>
 """, unsafe_allow_html=True)
 
 class PDFManagerApp:
@@ -250,7 +190,7 @@ class PDFManagerApp:
             return [1]
     
     def render_position_selector(self, pdf_file, page_num=0):
-        """Render interactive position selector with drag-and-drop"""
+        """Render interactive position selector"""
         st.subheader("🎯 Position Selection")
         
         try:
@@ -260,21 +200,8 @@ class PDFManagerApp:
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.write("**Click on the preview to set position:**")
-                
-                # Display preview with click handling
-                st.markdown(f"""
-                <div class="pdf-preview-container">
-                    <img src="data:image/png;base64,{preview_img}" 
-                         class="preview-image" 
-                         onclick="handleImageClick(event)"
-                         style="width: 100%; max-width: 600px;">
-                    <div class="position-overlay" 
-                         style="left: {st.session_state.position_x}px; 
-                                top: {st.session_state.position_y}px; 
-                                width: 20px; height: 20px;"></div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.write("**PDF Preview:**")
+                st.image(f"data:image/png;base64,{preview_img}", caption=f"Page {page_num + 1}", width=600)
             
             with col2:
                 st.write("**Position Controls:**")
@@ -367,6 +294,38 @@ class PDFManagerApp:
         except Exception as e:
             st.error(f"Failed to generate preview: {str(e)}")
     
+    # CONVERSION TOOLS
+    def conversion_tools(self):
+        st.header("🔄 PDF Conversion Tools")
+        
+        conversion_type = st.selectbox(
+            "Choose conversion type:",
+            ["PDF to Word", "PDF to Excel", "PDF to PowerPoint", "PDF to Images", 
+             "Word to PDF", "Excel to PDF", "PowerPoint to PDF", "Images to PDF"]
+        )
+        
+        uploaded_file = st.file_uploader(
+            "Upload your file",
+            type=['pdf', 'docx', 'xlsx', 'pptx', 'jpg', 'jpeg', 'png'],
+            help="Drag and drop your file here"
+        )
+        
+        if uploaded_file and st.button("Convert", type="primary"):
+            with st.spinner("Converting your file..."):
+                try:
+                    result = self.converter.convert_file(uploaded_file, conversion_type)
+                    if result:
+                        st.success("✅ Conversion completed!")
+                        st.download_button(
+                            label="📥 Download Converted File",
+                            data=result['data'],
+                            file_name=result['filename'],
+                            mime=result['mime_type']
+                        )
+                except Exception as e:
+                    st.error(f"❌ Conversion failed: {str(e)}")
+    
+    # EDITING TOOLS WITH PREVIEW
     def editing_tools(self):
         st.header("✏️ PDF Editing Tools with Interactive Preview")
         
@@ -558,49 +517,473 @@ class PDFManagerApp:
                     except Exception as e:
                         st.error(f"❌ Failed to add watermark: {str(e)}")
     
-    # Keep all other existing methods from the previous implementation
-    def conversion_tools(self):
-        st.header("🔄 PDF Conversion Tools")
+    def add_page_numbers_tool(self, uploaded_pdf):
+        st.subheader("Add Page Numbers")
         
-        conversion_type = st.selectbox(
-            "Choose conversion type:",
-            ["PDF to Word", "PDF to Excel", "PDF to PowerPoint", "PDF to Images", 
-             "Word to PDF", "Excel to PDF", "PowerPoint to PDF", "Images to PDF"]
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            position = st.selectbox(
+                "Position",
+                ["bottom_right", "bottom_left", "top_right", "top_left", "bottom_center"]
+            )
+            font_size = st.slider("Font Size", 8, 24, 12)
         
-        uploaded_file = st.file_uploader(
-            "Upload your file",
-            type=['pdf', 'docx', 'xlsx', 'pptx', 'jpg', 'jpeg', 'png'],
-            help="Drag and drop your file here"
-        )
+        with col2:
+            start_number = st.number_input("Start Number", min_value=1, value=1)
         
-        if uploaded_file and st.button("Convert", type="primary"):
-            with st.spinner("Converting your file..."):
+        if st.button("Add Page Numbers"):
+            with st.spinner("Adding page numbers..."):
                 try:
-                    result = self.converter.convert_file(uploaded_file, conversion_type)
-                    if result:
-                        st.success("✅ Conversion completed!")
+                    result = self.editor.add_page_numbers(
+                        uploaded_pdf, position, font_size, start_number
+                    )
+                    st.success("✅ Page numbers added successfully!")
+                    st.download_button(
+                        label="📥 Download Numbered PDF",
+                        data=result,
+                        file_name=f"numbered_{uploaded_pdf.name}",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add page numbers: {str(e)}")
+    
+    # ORGANIZATION TOOLS
+    def organization_tools(self):
+        st.header("📁 PDF Organization Tools")
+        
+        org_option = st.selectbox(
+            "Choose organization option:",
+            ["Merge PDFs", "Split PDF", "Rearrange Pages", "Extract Pages", 
+             "Rotate Pages", "Remove Pages", "Compress PDF"]
+        )
+        
+        if org_option == "Merge PDFs":
+            self.merge_pdfs_tool()
+        elif org_option == "Split PDF":
+            self.split_pdf_tool()
+        elif org_option == "Rearrange Pages":
+            self.rearrange_pages_tool()
+        elif org_option == "Extract Pages":
+            self.extract_pages_tool()
+        elif org_option == "Rotate Pages":
+            self.rotate_pages_tool()
+        elif org_option == "Remove Pages":
+            self.remove_pages_tool()
+        elif org_option == "Compress PDF":
+            self.compress_pdf_tool()
+    
+    def merge_pdfs_tool(self):
+        st.subheader("Merge Multiple PDFs")
+        
+        uploaded_files = st.file_uploader(
+            "Upload PDF files to merge",
+            type=['pdf'],
+            accept_multiple_files=True
+        )
+        
+        if len(uploaded_files) > 1:
+            st.info(f"Selected {len(uploaded_files)} files for merging")
+            
+            st.write("**Merge Order:**")
+            for i, file in enumerate(uploaded_files, 1):
+                st.write(f"{i}. {file.name}")
+            
+            if st.button("Merge PDFs", type="primary"):
+                with st.spinner("Merging PDFs..."):
+                    try:
+                        result = self.editor.merge_pdfs(uploaded_files)
+                        st.success("✅ PDFs merged successfully!")
                         st.download_button(
-                            label="📥 Download Converted File",
+                            label="📥 Download Merged PDF",
+                            data=result,
+                            file_name="merged_document.pdf",
+                            mime="application/pdf"
+                        )
+                    except Exception as e:
+                        st.error(f"❌ Failed to merge PDFs: {str(e)}")
+        else:
+            st.warning("Please upload at least 2 PDF files to merge")
+    
+    def split_pdf_tool(self):
+        st.subheader("Split PDF")
+        
+        uploaded_pdf = st.file_uploader("Upload PDF to split", type=['pdf'])
+        
+        if uploaded_pdf:
+            split_method = st.selectbox(
+                "Choose split method:",
+                ["By Page Numbers", "By Page Ranges", "Equal Parts"]
+            )
+            
+            if split_method == "By Page Numbers":
+                page_numbers = st.text_input(
+                    "Enter page numbers (comma-separated):",
+                    placeholder="1,3,5,7"
+                )
+                
+                if st.button("Split PDF") and page_numbers:
+                    with st.spinner("Splitting PDF..."):
+                        try:
+                            result = self.editor.split_pdf(uploaded_pdf, "pages", page_numbers)
+                            st.success(f"✅ PDF split into {len(result)} files!")
+                            
+                            for i, file_data in enumerate(result):
+                                st.download_button(
+                                    label=f"📥 Download {file_data['filename']}",
+                                    data=file_data['data'],
+                                    file_name=file_data['filename'],
+                                    mime="application/pdf",
+                                    key=f"split_{i}"
+                                )
+                        except Exception as e:
+                            st.error(f"❌ Failed to split PDF: {str(e)}")
+    
+    def rearrange_pages_tool(self):
+        st.subheader("Rearrange Pages")
+        
+        uploaded_pdf = st.file_uploader("Upload PDF to rearrange", type=['pdf'])
+        
+        if uploaded_pdf:
+            new_order = st.text_input(
+                "Enter new page order (comma-separated):",
+                placeholder="3,1,4,2,5",
+                help="Enter page numbers in the order you want them to appear"
+            )
+            
+            if st.button("Rearrange Pages") and new_order:
+                with st.spinner("Rearranging pages..."):
+                    try:
+                        order_list = [int(p.strip()) for p in new_order.split(',')]
+                        result = self.editor.rearrange_pages(uploaded_pdf, order_list)
+                        st.success("✅ Pages rearranged successfully!")
+                        st.download_button(
+                            label="📥 Download Rearranged PDF",
+                            data=result,
+                            file_name=f"rearranged_{uploaded_pdf.name}",
+                            mime="application/pdf"
+                        )
+                    except Exception as e:
+                        st.error(f"❌ Failed to rearrange pages: {str(e)}")
+    
+    def extract_pages_tool(self):
+        st.subheader("Extract Pages")
+        
+        uploaded_pdf = st.file_uploader("Upload PDF to extract pages from", type=['pdf'])
+        
+        if uploaded_pdf:
+            page_numbers = st.text_input(
+                "Enter page numbers to extract (comma-separated):",
+                placeholder="1,3,5,7"
+            )
+            
+            if st.button("Extract Pages") and page_numbers:
+                with st.spinner("Extracting pages..."):
+                    try:
+                        pages_list = [int(p.strip()) for p in page_numbers.split(',')]
+                        result = self.editor.extract_pages(uploaded_pdf, pages_list)
+                        st.success("✅ Pages extracted successfully!")
+                        st.download_button(
+                            label="📥 Download Extracted Pages",
+                            data=result,
+                            file_name=f"extracted_{uploaded_pdf.name}",
+                            mime="application/pdf"
+                        )
+                    except Exception as e:
+                        st.error(f"❌ Failed to extract pages: {str(e)}")
+    
+    def rotate_pages_tool(self):
+        st.subheader("Rotate Pages")
+        
+        uploaded_pdf = st.file_uploader("Upload PDF to rotate", type=['pdf'])
+        
+        if uploaded_pdf:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                rotation_angle = st.selectbox("Rotation angle:", [90, 180, 270, -90])
+            
+            with col2:
+                page_selection = st.selectbox("Pages to rotate:", ["All pages", "Specific pages"])
+            
+            if page_selection == "Specific pages":
+                page_numbers = st.text_input("Enter page numbers (comma-separated):", placeholder="1,3,5")
+                pages_list = [int(p.strip()) for p in page_numbers.split(',')] if page_numbers else None
+            else:
+                pages_list = None
+            
+            if st.button("Rotate Pages"):
+                with st.spinner("Rotating pages..."):
+                    try:
+                        result = self.editor.rotate_pages(uploaded_pdf, rotation_angle, pages_list)
+                        st.success("✅ Pages rotated successfully!")
+                        st.download_button(
+                            label="📥 Download Rotated PDF",
+                            data=result,
+                            file_name=f"rotated_{uploaded_pdf.name}",
+                            mime="application/pdf"
+                        )
+                    except Exception as e:
+                        st.error(f"❌ Failed to rotate pages: {str(e)}")
+    
+    def remove_pages_tool(self):
+        st.subheader("Remove Pages")
+        
+        uploaded_pdf = st.file_uploader("Upload PDF to remove pages from", type=['pdf'])
+        
+        if uploaded_pdf:
+            page_numbers = st.text_input(
+                "Enter page numbers to remove (comma-separated):",
+                placeholder="2,4,6"
+            )
+            
+            if st.button("Remove Pages") and page_numbers:
+                with st.spinner("Removing pages..."):
+                    try:
+                        pages_list = [int(p.strip()) for p in page_numbers.split(',')]
+                        # Note: You'll need to implement this method in PDFEditor
+                        st.info("Remove pages functionality - implementation needed in PDFEditor class")
+                    except Exception as e:
+                        st.error(f"❌ Failed to remove pages: {str(e)}")
+    
+    def compress_pdf_tool(self):
+        st.subheader("Compress PDF")
+        
+        uploaded_pdf = st.file_uploader("Upload PDF to compress", type=['pdf'])
+        
+        if uploaded_pdf:
+            compression_level = st.selectbox(
+                "Compression Level",
+                ["low", "medium", "high", "maximum"]
+            )
+            
+            if st.button("Compress PDF"):
+                with st.spinner("Compressing PDF..."):
+                    try:
+                        result = self.security.compress_pdf(uploaded_pdf, compression_level)
+                        st.success("✅ PDF compressed successfully!")
+                        
+                        # Show compression statistics
+                        info = result['compression_info']
+                        st.info(f"Original size: {info['original_size']:,} bytes")
+                        st.info(f"Compressed size: {info['compressed_size']:,} bytes")
+                        st.info(f"Compression ratio: {info['compression_ratio']}%")
+                        
+                        st.download_button(
+                            label="📥 Download Compressed PDF",
                             data=result['data'],
                             file_name=result['filename'],
-                            mime=result['mime_type']
+                            mime="application/pdf"
                         )
-                except Exception as e:
-                    st.error(f"❌ Conversion failed: {str(e)}")
+                    except Exception as e:
+                        st.error(f"❌ Failed to compress PDF: {str(e)}")
     
-    # Add other existing methods here...
-    def organization_tools(self):
-        st.info("Organization tools - keeping existing implementation")
-    
+    # ANNOTATION TOOLS
     def annotation_tools(self):
-        st.info("Annotation tools - keeping existing implementation")
+        st.header("🎨 PDF Annotation Tools")
+        
+        annotation_type = st.selectbox(
+            "Choose annotation type:",
+            ["Highlight Text", "Underline Text", "Strikeout Text", "Add Notes", "Add Stamps"]
+        )
+        
+        uploaded_pdf = st.file_uploader("Upload PDF file", type=['pdf'])
+        
+        if uploaded_pdf:
+            if annotation_type == "Highlight Text":
+                self.highlight_tool(uploaded_pdf)
+            elif annotation_type == "Underline Text":
+                self.underline_tool(uploaded_pdf)
+            elif annotation_type == "Strikeout Text":
+                self.strikeout_tool(uploaded_pdf)
+            elif annotation_type == "Add Notes":
+                self.notes_tool(uploaded_pdf)
+            elif annotation_type == "Add Stamps":
+                self.stamps_tool(uploaded_pdf)
     
+    def highlight_tool(self, uploaded_pdf):
+        st.subheader("Add Highlights")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            page_number = st.number_input("Page Number", min_value=1, value=1)
+            highlight_color = st.color_picker("Highlight Color", "#FFFF00")
+        
+        with col2:
+            x1 = st.number_input("X1 Position", value=100)
+            y1 = st.number_input("Y1 Position", value=100)
+            x2 = st.number_input("X2 Position", value=200)
+            y2 = st.number_input("Y2 Position", value=120)
+        
+        if st.button("Add Highlight"):
+            with st.spinner("Adding highlight..."):
+                try:
+                    result = self.editor.add_highlight(
+                        uploaded_pdf, page_number-1, [x1, y1, x2, y2], highlight_color
+                    )
+                    st.success("✅ Highlight added successfully!")
+                    st.download_button(
+                        label="📥 Download Highlighted PDF",
+                        data=result,
+                        file_name=f"highlighted_{uploaded_pdf.name}",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add highlight: {str(e)}")
+    
+    def underline_tool(self, uploaded_pdf):
+        st.subheader("Add Underlines")
+        st.info("Underline tool - similar implementation to highlight")
+    
+    def strikeout_tool(self, uploaded_pdf):
+        st.subheader("Add Strikeout")
+        st.info("Strikeout tool - similar implementation to highlight")
+    
+    def notes_tool(self, uploaded_pdf):
+        st.subheader("Add Notes")
+        st.info("Notes tool - implementation for adding sticky notes")
+    
+    def stamps_tool(self, uploaded_pdf):
+        st.subheader("Add Stamps")
+        st.info("Stamps tool - implementation for adding stamps")
+    
+    # SECURITY TOOLS
     def security_tools(self):
-        st.info("Security tools - keeping existing implementation")
+        st.header("🔒 PDF Security Tools")
+        
+        security_option = st.selectbox(
+            "Choose security option:",
+            ["Add Password Protection", "Remove Password", "Digital Signature"]
+        )
+        
+        uploaded_pdf = st.file_uploader("Upload PDF file", type=['pdf'])
+        
+        if uploaded_pdf:
+            if security_option == "Add Password Protection":
+                self.add_password_tool(uploaded_pdf)
+            elif security_option == "Remove Password":
+                self.remove_password_tool(uploaded_pdf)
+            elif security_option == "Digital Signature":
+                self.digital_signature_tool(uploaded_pdf)
     
+    def add_password_tool(self, uploaded_pdf):
+        st.subheader("Add Password Protection")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            user_password = st.text_input("User Password", type="password")
+            owner_password = st.text_input("Owner Password (optional)", type="password")
+        
+        with col2:
+            encryption_method = st.selectbox("Encryption Method", ["AES_256", "AES_128", "RC4_128"])
+            
+            permissions = st.multiselect(
+                "Permissions",
+                ["print", "copy", "annotate", "form", "accessibility"],
+                default=["print", "copy"]
+            )
+        
+        if st.button("Add Password Protection") and user_password:
+            with st.spinner("Adding password protection..."):
+                try:
+                    result = self.security.add_password(
+                        uploaded_pdf, user_password, owner_password or None,
+                        encryption_method, permissions
+                    )
+                    st.success("✅ Password protection added successfully!")
+                    st.download_button(
+                        label="📥 Download Protected PDF",
+                        data=result['data'],
+                        file_name=result['filename'],
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add password protection: {str(e)}")
+    
+    def remove_password_tool(self, uploaded_pdf):
+        st.subheader("Remove Password Protection")
+        
+        password = st.text_input("Enter PDF Password", type="password")
+        
+        if st.button("Remove Password") and password:
+            with st.spinner("Removing password..."):
+                try:
+                    result = self.security.remove_password(uploaded_pdf, password)
+                    st.success("✅ Password removed successfully!")
+                    st.download_button(
+                        label="📥 Download Unlocked PDF",
+                        data=result['data'],
+                        file_name=result['filename'],
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to remove password: {str(e)}")
+    
+    def digital_signature_tool(self, uploaded_pdf):
+        st.subheader("Add Digital Signature")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            signature_text = st.text_input("Signature Text", "Digitally Signed")
+            page_number = st.number_input("Page Number", min_value=1, value=1)
+        
+        with col2:
+            x_position = st.slider("X Position", 0, 600, 100)
+            y_position = st.slider("Y Position", 0, 800, 100)
+        
+        if st.button("Add Digital Signature"):
+            with st.spinner("Adding digital signature..."):
+                try:
+                    result = self.security.add_digital_signature(
+                        uploaded_pdf, signature_text, (x_position, y_position), page_number-1
+                    )
+                    st.success("✅ Digital signature added successfully!")
+                    st.download_button(
+                        label="📥 Download Signed PDF",
+                        data=result['data'],
+                        file_name=result['filename'],
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add digital signature: {str(e)}")
+    
+    # OCR TOOLS
     def ocr_tools(self):
-        st.info("OCR tools - keeping existing implementation")
+        st.header("🔍 OCR Tools")
+        st.info("Convert scanned PDFs and images to searchable, editable text")
+        
+        uploaded_file = st.file_uploader(
+            "Upload scanned PDF or image",
+            type=['pdf', 'jpg', 'jpeg', 'png', 'tiff']
+        )
+        
+        if uploaded_file and st.button("Extract Text with OCR", type="primary"):
+            with st.spinner("Processing with OCR..."):
+                try:
+                    result = self.ocr.extract_text(uploaded_file)
+                    st.success("✅ OCR processing completed!")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            label="📥 Download Searchable PDF",
+                            data=result['pdf_data'],
+                            file_name=result['pdf_filename'],
+                            mime="application/pdf"
+                        )
+                    with col2:
+                        st.download_button(
+                            label="📄 Download Text File",
+                            data=result['text_data'],
+                            file_name=result['text_filename'],
+                            mime="text/plain"
+                        )
+                    
+                    with st.expander("👁️ Preview Extracted Text"):
+                        st.text_area("Extracted Text:", result['text'], height=300)
+                        
+                except Exception as e:
+                    st.error(f"❌ OCR processing failed: {str(e)}")
 
 if __name__ == "__main__":
     app = PDFManagerApp()
