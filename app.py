@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Enhanced CSS with preview support
+# Enhanced CSS
 st.markdown("""
 <style>
 .main-header {
@@ -35,14 +35,6 @@ st.markdown("""
     position: relative;
 }
 
-.preview-image {
-    max-width: 100%;
-    height: auto;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    cursor: crosshair;
-}
-
 .before-after-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -52,24 +44,6 @@ st.markdown("""
 
 .preview-section {
     text-align: center;
-}
-
-.page-thumbnail {
-    border: 2px solid transparent;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin: 5px;
-}
-
-.page-thumbnail:hover {
-    border-color: #3498db;
-    transform: scale(1.05);
-}
-
-.page-thumbnail.selected {
-    border-color: #e74c3c;
-    background: rgba(231, 76, 60, 0.1);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -88,8 +62,6 @@ class PDFManagerApp:
             st.session_state.position_x = 100
         if 'position_y' not in st.session_state:
             st.session_state.position_y = 100
-        if 'current_page' not in st.session_state:
-            st.session_state.current_page = 1
         
         # Create temp directory
         self.temp_dir = Path("temp")
@@ -273,23 +245,15 @@ class PDFManagerApp:
                 pdf_file, page_num, overlay_type, overlay_data
             )
             
-            st.markdown('<div class="before-after-container">', unsafe_allow_html=True)
-            
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown('<div class="preview-section">', unsafe_allow_html=True)
                 st.markdown("#### 📄 Before")
                 st.image(f"data:image/png;base64,{original_preview}", caption="Original", use_column_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
             
             with col2:
-                st.markdown('<div class="preview-section">', unsafe_allow_html=True)
                 st.markdown("#### ✨ After")
                 st.image(f"data:image/png;base64,{modified_preview}", caption="Modified", use_column_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Failed to generate preview: {str(e)}")
@@ -554,7 +518,7 @@ class PDFManagerApp:
         org_option = st.selectbox(
             "Choose organization option:",
             ["Merge PDFs", "Split PDF", "Rearrange Pages", "Extract Pages", 
-             "Rotate Pages", "Remove Pages", "Compress PDF"]
+             "Rotate Pages", "Compress PDF"]
         )
         
         if org_option == "Merge PDFs":
@@ -567,8 +531,6 @@ class PDFManagerApp:
             self.extract_pages_tool()
         elif org_option == "Rotate Pages":
             self.rotate_pages_tool()
-        elif org_option == "Remove Pages":
-            self.remove_pages_tool()
         elif org_option == "Compress PDF":
             self.compress_pdf_tool()
     
@@ -634,6 +596,53 @@ class PDFManagerApp:
                                     file_name=file_data['filename'],
                                     mime="application/pdf",
                                     key=f"split_{i}"
+                                )
+                        except Exception as e:
+                            st.error(f"❌ Failed to split PDF: {str(e)}")
+            
+            elif split_method == "By Page Ranges":
+                page_ranges = st.text_input(
+                    "Enter page ranges (comma-separated):",
+                    placeholder="1-3,4-6,7-10"
+                )
+                
+                if st.button("Split PDF") and page_ranges:
+                    with st.spinner("Splitting PDF..."):
+                        try:
+                            result = self.editor.split_pdf(uploaded_pdf, "range", page_ranges)
+                            st.success(f"✅ PDF split into {len(result)} files!")
+                            
+                            for i, file_data in enumerate(result):
+                                st.download_button(
+                                    label=f"📥 Download {file_data['filename']}",
+                                    data=file_data['data'],
+                                    file_name=file_data['filename'],
+                                    mime="application/pdf",
+                                    key=f"range_{i}"
+                                )
+                        except Exception as e:
+                            st.error(f"❌ Failed to split PDF: {str(e)}")
+            
+            elif split_method == "Equal Parts":
+                pages_per_part = st.number_input(
+                    "Pages per part:",
+                    min_value=1,
+                    value=1
+                )
+                
+                if st.button("Split PDF"):
+                    with st.spinner("Splitting PDF..."):
+                        try:
+                            result = self.editor.split_pdf(uploaded_pdf, "equal", str(pages_per_part))
+                            st.success(f"✅ PDF split into {len(result)} files!")
+                            
+                            for i, file_data in enumerate(result):
+                                st.download_button(
+                                    label=f"📥 Download {file_data['filename']}",
+                                    data=file_data['data'],
+                                    file_name=file_data['filename'],
+                                    mime="application/pdf",
+                                    key=f"equal_{i}"
                                 )
                         except Exception as e:
                             st.error(f"❌ Failed to split PDF: {str(e)}")
@@ -725,26 +734,6 @@ class PDFManagerApp:
                     except Exception as e:
                         st.error(f"❌ Failed to rotate pages: {str(e)}")
     
-    def remove_pages_tool(self):
-        st.subheader("Remove Pages")
-        
-        uploaded_pdf = st.file_uploader("Upload PDF to remove pages from", type=['pdf'])
-        
-        if uploaded_pdf:
-            page_numbers = st.text_input(
-                "Enter page numbers to remove (comma-separated):",
-                placeholder="2,4,6"
-            )
-            
-            if st.button("Remove Pages") and page_numbers:
-                with st.spinner("Removing pages..."):
-                    try:
-                        pages_list = [int(p.strip()) for p in page_numbers.split(',')]
-                        # Note: You'll need to implement this method in PDFEditor
-                        st.info("Remove pages functionality - implementation needed in PDFEditor class")
-                    except Exception as e:
-                        st.error(f"❌ Failed to remove pages: {str(e)}")
-    
     def compress_pdf_tool(self):
         st.subheader("Compress PDF")
         
@@ -833,19 +822,128 @@ class PDFManagerApp:
     
     def underline_tool(self, uploaded_pdf):
         st.subheader("Add Underlines")
-        st.info("Underline tool - similar implementation to highlight")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            page_number = st.number_input("Page Number", min_value=1, value=1)
+            underline_color = st.color_picker("Underline Color", "#FF0000")
+        
+        with col2:
+            x1 = st.number_input("X1 Position", value=100)
+            y1 = st.number_input("Y1 Position", value=100)
+            x2 = st.number_input("X2 Position", value=200)
+            y2 = st.number_input("Y2 Position", value=120)
+        
+        if st.button("Add Underline"):
+            with st.spinner("Adding underline..."):
+                try:
+                    result = self.editor.add_underline(
+                        uploaded_pdf, page_number-1, [x1, y1, x2, y2], underline_color
+                    )
+                    st.success("✅ Underline added successfully!")
+                    st.download_button(
+                        label="📥 Download Underlined PDF",
+                        data=result,
+                        file_name=f"underlined_{uploaded_pdf.name}",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add underline: {str(e)}")
     
     def strikeout_tool(self, uploaded_pdf):
         st.subheader("Add Strikeout")
-        st.info("Strikeout tool - similar implementation to highlight")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            page_number = st.number_input("Page Number", min_value=1, value=1)
+            strikeout_color = st.color_picker("Strikeout Color", "#FF0000")
+        
+        with col2:
+            x1 = st.number_input("X1 Position", value=100)
+            y1 = st.number_input("Y1 Position", value=100)
+            x2 = st.number_input("X2 Position", value=200)
+            y2 = st.number_input("Y2 Position", value=120)
+        
+        if st.button("Add Strikeout"):
+            with st.spinner("Adding strikeout..."):
+                try:
+                    result = self.editor.add_strikeout(
+                        uploaded_pdf, page_number-1, [x1, y1, x2, y2], strikeout_color
+                    )
+                    st.success("✅ Strikeout added successfully!")
+                    st.download_button(
+                        label="📥 Download Strikeout PDF",
+                        data=result,
+                        file_name=f"strikeout_{uploaded_pdf.name}",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add strikeout: {str(e)}")
     
     def notes_tool(self, uploaded_pdf):
-        st.subheader("Add Notes")
-        st.info("Notes tool - implementation for adding sticky notes")
+        st.subheader("Add Sticky Notes")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            page_number = st.number_input("Page Number", min_value=1, value=1)
+            note_content = st.text_area("Note Content", "Enter your note here...")
+        
+        with col2:
+            x_pos = st.number_input("X Position", value=100)
+            y_pos = st.number_input("Y Position", value=100)
+            icon_type = st.selectbox("Icon Type", ["Note", "Comment", "Key", "Help"])
+        
+        if st.button("Add Note") and note_content:
+            with st.spinner("Adding note..."):
+                try:
+                    result = self.editor.add_note(
+                        uploaded_pdf, page_number-1, [x_pos, y_pos], note_content, icon_type
+                    )
+                    st.success("✅ Note added successfully!")
+                    st.download_button(
+                        label="📥 Download PDF with Note",
+                        data=result,
+                        file_name=f"noted_{uploaded_pdf.name}",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add note: {str(e)}")
     
     def stamps_tool(self, uploaded_pdf):
         st.subheader("Add Stamps")
-        st.info("Stamps tool - implementation for adding stamps")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            page_number = st.number_input("Page Number", min_value=1, value=1)
+            stamp_text = st.selectbox("Stamp Text", ["APPROVED", "REJECTED", "CONFIDENTIAL", "DRAFT", "FINAL"])
+            stamp_color = st.color_picker("Stamp Color", "#FF0000")
+        
+        with col2:
+            x_pos = st.number_input("X Position", value=100)
+            y_pos = st.number_input("Y Position", value=100)
+            width = st.number_input("Width", value=100)
+            height = st.number_input("Height", value=50)
+        
+        if st.button("Add Stamp"):
+            with st.spinner("Adding stamp..."):
+                try:
+                    result = self.editor.add_stamp(
+                        uploaded_pdf, page_number-1, [x_pos, y_pos, x_pos+width, y_pos+height], 
+                        stamp_text, stamp_color
+                    )
+                    st.success("✅ Stamp added successfully!")
+                    st.download_button(
+                        label="📥 Download Stamped PDF",
+                        data=result,
+                        file_name=f"stamped_{uploaded_pdf.name}",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to add stamp: {str(e)}")
     
     # SECURITY TOOLS
     def security_tools(self):
@@ -853,7 +951,7 @@ class PDFManagerApp:
         
         security_option = st.selectbox(
             "Choose security option:",
-            ["Add Password Protection", "Remove Password", "Digital Signature"]
+            ["Add Password Protection", "Remove Password", "Digital Signature", "Check Security"]
         )
         
         uploaded_pdf = st.file_uploader("Upload PDF file", type=['pdf'])
@@ -865,6 +963,8 @@ class PDFManagerApp:
                 self.remove_password_tool(uploaded_pdf)
             elif security_option == "Digital Signature":
                 self.digital_signature_tool(uploaded_pdf)
+            elif security_option == "Check Security":
+                self.check_security_tool(uploaded_pdf)
     
     def add_password_tool(self, uploaded_pdf):
         st.subheader("Add Password Protection")
@@ -947,6 +1047,47 @@ class PDFManagerApp:
                 except Exception as e:
                     st.error(f"❌ Failed to add digital signature: {str(e)}")
     
+    def check_security_tool(self, uploaded_pdf):
+        st.subheader("Check PDF Security")
+        
+        password = st.text_input("Password (if protected)", type="password")
+        
+        if st.button("Check Security"):
+            with st.spinner("Checking PDF security..."):
+                try:
+                    result = self.security.check_pdf_security(uploaded_pdf, password or None)
+                    
+                    st.success("✅ Security check completed!")
+                    
+                    # Display security information
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**Security Status:**")
+                        st.write(f"Encrypted: {'Yes' if result['is_encrypted'] else 'No'}")
+                        st.write(f"Needs Password: {'Yes' if result['needs_password'] else 'No'}")
+                        st.write(f"Authenticated: {'Yes' if result['is_authenticated'] else 'No'}")
+                    
+                    with col2:
+                        if result['is_authenticated'] and result['permissions']:
+                            st.write("**Permissions:**")
+                            for perm, allowed in result['permissions'].items():
+                                st.write(f"{perm.replace('can_', '').title()}: {'✅' if allowed else '❌'}")
+                    
+                    if result['is_authenticated'] and result['metadata']:
+                        st.write("**Document Information:**")
+                        metadata = result['metadata']
+                        st.write(f"Pages: {metadata['page_count']}")
+                        if metadata['title']:
+                            st.write(f"Title: {metadata['title']}")
+                        if metadata['author']:
+                            st.write(f"Author: {metadata['author']}")
+                        if metadata['creator']:
+                            st.write(f"Creator: {metadata['creator']}")
+                        
+                except Exception as e:
+                    st.error(f"❌ Failed to check security: {str(e)}")
+    
     # OCR TOOLS
     def ocr_tools(self):
         st.header("🔍 OCR Tools")
@@ -957,33 +1098,42 @@ class PDFManagerApp:
             type=['pdf', 'jpg', 'jpeg', 'png', 'tiff']
         )
         
-        if uploaded_file and st.button("Extract Text with OCR", type="primary"):
-            with st.spinner("Processing with OCR..."):
-                try:
-                    result = self.ocr.extract_text(uploaded_file)
-                    st.success("✅ OCR processing completed!")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.download_button(
-                            label="📥 Download Searchable PDF",
-                            data=result['pdf_data'],
-                            file_name=result['pdf_filename'],
-                            mime="application/pdf"
-                        )
-                    with col2:
-                        st.download_button(
-                            label="📄 Download Text File",
-                            data=result['text_data'],
-                            file_name=result['text_filename'],
-                            mime="text/plain"
-                        )
-                    
-                    with st.expander("👁️ Preview Extracted Text"):
-                        st.text_area("Extracted Text:", result['text'], height=300)
+        if uploaded_file:
+            # OCR language selection
+            ocr_language = st.selectbox(
+                "OCR Language",
+                ["eng", "fra", "deu", "spa", "ita", "por", "rus", "chi_sim", "jpn", "kor"],
+                index=0,
+                help="Select the primary language in your document"
+            )
+            
+            if st.button("Extract Text with OCR", type="primary"):
+                with st.spinner("Processing with OCR..."):
+                    try:
+                        result = self.ocr.extract_text(uploaded_file)
+                        st.success("✅ OCR processing completed!")
                         
-                except Exception as e:
-                    st.error(f"❌ OCR processing failed: {str(e)}")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="📥 Download Searchable PDF",
+                                data=result['pdf_data'],
+                                file_name=result['pdf_filename'],
+                                mime="application/pdf"
+                            )
+                        with col2:
+                            st.download_button(
+                                label="📄 Download Text File",
+                                data=result['text_data'],
+                                file_name=result['text_filename'],
+                                mime="text/plain"
+                            )
+                        
+                        with st.expander("👁️ Preview Extracted Text"):
+                            st.text_area("Extracted Text:", result['text'], height=300)
+                            
+                    except Exception as e:
+                        st.error(f"❌ OCR processing failed: {str(e)}")
 
 if __name__ == "__main__":
     app = PDFManagerApp()
