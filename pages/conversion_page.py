@@ -1,4 +1,10 @@
 import streamlit as st
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from core.ui_components import UIComponents
 from utils.pdf_converter import PDFConverter
 from config.settings import APP_CONFIG
