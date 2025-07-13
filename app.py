@@ -1,20 +1,29 @@
 import streamlit as st
+import sys
+import os
 from pathlib import Path
-from config.settings import APP_CONFIG
-from core.session_manager import SessionManager
-from core.ui_components import UIComponents
-from pages import (
-    conversion_page,
-    editing_page,
-    organization_page,
-    annotation_page,
-    security_page,
-    ocr_page
-)
+
+# Add the current directory to Python path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Import modules using absolute imports
+try:
+    from config.settings import APP_CONFIG, UI_CONFIG
+    from core.session_manager import SessionManager
+    from core.ui_components import UIComponents
+    import pages.conversion_page as conversion_page
+    import pages.editing_page as editing_page
+    import pages.organization_page as organization_page
+    import pages.annotation_page as annotation_page
+    import pages.security_page as security_page
+    import pages.ocr_page as ocr_page
+except ImportError as e:
+    st.error(f"Import error: {e}")
+    st.stop()
 
 # Page configuration
 st.set_page_config(
-    page_title=APP_CONFIG['app_name'],
+    page_title="PDF Manager Pro",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -47,19 +56,24 @@ class PDFManagerApp:
     
     def route_to_page(self, tool_category):
         """Route to the appropriate page based on user selection"""
-        page_mapping = {
-            "🔄 Convert": conversion_page,
-            "✏️ Edit": editing_page,
-            "📁 Organize": organization_page,
-            "🎨 Annotate": annotation_page,
-            "🔒 Security": security_page,
-            "🔍 OCR": ocr_page
-        }
-        
-        if tool_category in page_mapping:
-            page_mapping[tool_category].render()
-        else:
-            st.error("Page not found!")
+        try:
+            if tool_category == "🔄 Convert":
+                conversion_page.render()
+            elif tool_category == "✏️ Edit":
+                editing_page.render()
+            elif tool_category == "📁 Organize":
+                organization_page.render()
+            elif tool_category == "🎨 Annotate":
+                annotation_page.render()
+            elif tool_category == "🔒 Security":
+                security_page.render()
+            elif tool_category == "🔍 OCR":
+                ocr_page.render()
+            else:
+                st.error("Page not found!")
+        except Exception as e:
+            st.error(f"Error loading page: {str(e)}")
+            st.info("Please check that all required files are present and properly configured.")
 
 if __name__ == "__main__":
     app = PDFManagerApp()
