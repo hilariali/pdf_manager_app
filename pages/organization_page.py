@@ -1,4 +1,10 @@
 import streamlit as st
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from core.ui_components import UIComponents
 from utils.pdf_editor import PDFEditor
 from utils.pdf_security import PDFSecurity
@@ -143,23 +149,118 @@ def _render_split_tool(ui_components, editor):
                     except Exception as e:
                         st.error(f"❌ Failed to split PDF: {str(e)}")
 
-# Additional helper functions for other organization tools...
 def _render_rearrange_tool(ui_components, editor):
     """Render rearrange pages tool"""
-    # Implementation similar to split tool
-    pass
+    st.subheader("Rearrange Pages")
+    
+    uploaded_pdf = ui_components.render_file_uploader("Upload PDF to rearrange", ['pdf'])
+    
+    if uploaded_pdf:
+        new_order = st.text_input(
+            "Enter new page order (comma-separated):",
+            placeholder="3,1,4,2,5",
+            help="Enter page numbers in the order you want them to appear"
+        )
+        
+        if st.button("Rearrange Pages") and new_order:
+            with st.spinner("Rearranging pages..."):
+                try:
+                    order_list = [int(p.strip()) for p in new_order.split(',')]
+                    result = editor.rearrange_pages(uploaded_pdf, order_list)
+                    ui_components.render_success_download(
+                        result,
+                        f"rearranged_{uploaded_pdf.name}",
+                        "📥 Download Rearranged PDF"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to rearrange pages: {str(e)}")
 
 def _render_extract_tool(ui_components, editor):
     """Render extract pages tool"""
-    # Implementation similar to split tool
-    pass
+    st.subheader("Extract Pages")
+    
+    uploaded_pdf = ui_components.render_file_uploader("Upload PDF to extract pages from", ['pdf'])
+    
+    if uploaded_pdf:
+        page_numbers = st.text_input(
+            "Enter page numbers to extract (comma-separated):",
+            placeholder="1,3,5,7"
+        )
+        
+        if st.button("Extract Pages") and page_numbers:
+            with st.spinner("Extracting pages..."):
+                try:
+                    pages_list = [int(p.strip()) for p in page_numbers.split(',')]
+                    result = editor.extract_pages(uploaded_pdf, pages_list)
+                    ui_components.render_success_download(
+                        result,
+                        f"extracted_{uploaded_pdf.name}",
+                        "📥 Download Extracted Pages"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to extract pages: {str(e)}")
 
 def _render_rotate_tool(ui_components, editor):
     """Render rotate pages tool"""
-    # Implementation similar to split tool
-    pass
+    st.subheader("Rotate Pages")
+    
+    uploaded_pdf = ui_components.render_file_uploader("Upload PDF to rotate", ['pdf'])
+    
+    if uploaded_pdf:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            rotation_angle = st.selectbox("Rotation angle:", [90, 180, 270, -90])
+        
+        with col2:
+            page_selection = st.selectbox("Pages to rotate:", ["All pages", "Specific pages"])
+        
+        if page_selection == "Specific pages":
+            page_numbers = st.text_input("Enter page numbers (comma-separated):", placeholder="1,3,5")
+            pages_list = [int(p.strip()) for p in page_numbers.split(',')] if page_numbers else None
+        else:
+            pages_list = None
+        
+        if st.button("Rotate Pages"):
+            with st.spinner("Rotating pages..."):
+                try:
+                    result = editor.rotate_pages(uploaded_pdf, rotation_angle, pages_list)
+                    ui_components.render_success_download(
+                        result,
+                        f"rotated_{uploaded_pdf.name}",
+                        "📥 Download Rotated PDF"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to rotate pages: {str(e)}")
 
 def _render_compress_tool(ui_components, security):
     """Render compress PDF tool"""
-    # Implementation using security module
-    pass
+    st.subheader("Compress PDF")
+    
+    uploaded_pdf = ui_components.render_file_uploader("Upload PDF to compress", ['pdf'])
+    
+    if uploaded_pdf:
+        compression_level = st.selectbox(
+            "Compression Level",
+            ["low", "medium", "high", "maximum"]
+        )
+        
+        if st.button("Compress PDF"):
+            with st.spinner("Compressing PDF..."):
+                try:
+                    result = security.compress_pdf(uploaded_pdf, compression_level)
+                    st.success("✅ PDF compressed successfully!")
+                    
+                    # Show compression statistics
+                    info = result['compression_info']
+                    st.info(f"Original size: {info['original_size']:,} bytes")
+                    st.info(f"Compressed size: {info['compressed_size']:,} bytes")
+                    st.info(f"Compression ratio: {info['compression_ratio']}%")
+                    
+                    ui_components.render_success_download(
+                        result['data'],
+                        result['filename'],
+                        "📥 Download Compressed PDF"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Failed to compress PDF: {str(e)}")
